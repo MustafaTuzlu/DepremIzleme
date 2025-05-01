@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Deprem Haritası</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <style>
+        /* Ses ikonu sabit konumlandırma */
+        #sound-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+
+        #sound-toggle:hover {
+            background-color: #f0f0f0;
+        }
+
+        #sound-toggle svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .sound-off svg path {
+            fill: #999;
+        }
+
+        .sound-on svg path {
+            fill: #28a745;
+        }
+    </style>
+    <style>
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+
+        .pulse-marker {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(255, 0, 0, 0.5);
+            position: relative;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.9);
+                opacity: 1;
+            }
+
+            70% {
+                transform: scale(2.5);
+                opacity: 0;
+            }
+
+            100% {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+
+        }
+    </style>
+</head>
+
+<body>
+    <button id="sound-toggle" onclick="SetSoundOnOff()"
+        style="position:fixed;top:20px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:#fff;box-shadow:0 0 5px rgba(0,0,0,0.2);z-index:9999;cursor:pointer;display:flex;align-items:center;justify-content:center">
+
+        <!-- Kapalı ikon -->
+        <svg id="sound-icon-off" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="24" height="24"
+            fill="#dc3545" style="display:block;">
+            <path
+                d="M9.586 8l2.122-2.121a.5.5 0 0 0-.707-.707L8.879 7.293 6.757 5.172a.5.5 0 0 0-.707.707L8.172 8l-2.122 2.121a.5.5 0 1 0 .707.707L8.879 8.707l2.122 2.122a.5.5 0 0 0 .707-.707L9.586 8z" />
+            <path d="M4 5H2.5a.5.5 0 0 0-.5.5v4A.5.5 0 0 0 2.5 10H4l3 3V2L4 5z" />
+        </svg>
+
+
+
+        <!-- Açık ikon -->
+        <svg id="sound-icon-on" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="24" height="24"
+            fill="#28a745" style="display:none;">
+            <path
+                d="M9 1.5a.5.5 0 0 1 .832-.374l4 3.5a.5.5 0 0 1 0 .748l-4 3.5A.5.5 0 0 1 9 8.5V1.5zM4 5H2.5a.5.5 0 0 0-.5.5v4A.5.5 0 0 0 2.5 10H4l3 3V2L4 5z" />
+        </svg>
+
+
+    </button>
+
+    <audio id="myAudio">
+        <source src="https://www.soundjay.com/buttons/beep-01a.mp3" type="audio/mpeg">
+    </audio>
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+    <script>
+        <!--GLOBAL ALAN-->
+        const iconUrls = {
+            green: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+            orange: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png',
+            red: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+            blue: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+            yellow: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png',
+            grey: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png',
+            violet: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png',
+            black: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-black.png'
+        };
+        let markers = new Map();
+        var map;
+        let playSound = 'off';
+
+        function SetSoundOnOff() {
+            const iconOn = document.getElementById('sound-icon-on');
+            const iconOff = document.getElementById('sound-icon-off');
+
+            if (playSound === 'on') {
+                playSound = 'off';
+                iconOn.style.display = 'none';
+                iconOff.style.display = 'block';
+            } else {
+                playSound = 'on';
+                iconOn.style.display = 'block';
+                iconOff.style.display = 'none';
+            }
+        }
+        function InitMap() {
+            map = L.map('map').setView([38.9637, 35.2433], 5); // Turkiyein orasi
+
+            // OSM Katmanı
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
+        };
+        function getIconByMagnitude(mag) {
+            let color = 'green';
+            if (mag >= 7.0) color = 'violet';
+            if (mag >= 6.0 && mag < 7.0) color = 'red'; if (mag >= 5.0 && mag < 6.0) color = 'orange'; if (mag >= 4.0 && mag
+                < 5.0) color = 'yellow'; if (mag >= 3.0 && mag < 4.0) color = 'blue'; if (mag >= 2.0 && mag < 3.0) color = 'grey'
+                    ; if (mag >= 1.0 && mag < 2.0) color = 'black'; return L.icon({
+                        iconUrl: iconUrls[color],
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/images/marker-shadow.png',
+                        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                    });
+        }
+        function GetLastDataFromAPI() {
+            fetch("https://api.orhanaydogdu.com.tr/deprem/kandilli/live?limit=100").then(res =>
+                res.json())
+                .then(data => {
+                    if (!data.result) return;
+
+                    data.result.forEach((eq, index) => {
+                        const key = eq._id;
+                        if (markers.has(key)) return; // zaten haritada varsa ekleme
+
+                        const lng = parseFloat(eq.geojson.coordinates[0]);
+                        const lat = parseFloat(eq.geojson.coordinates[1]);
+                        const mag = parseFloat(eq.mag);
+                        const depth = parseFloat(eq.depth);
+                        const date = eq.date;
+
+                        //const icon = getIconByMagnitude(mag);
+                        const marker = L.marker([lat, lng], {
+                            icon: getIconByMagnitude(mag)
+                        }).addTo(map);
+
+                        marker.bindPopup(
+                            `<strong>${eq.title}</strong><br><strong>Şiddet:</strong>
+                            ${mag}<br><strong>Derinlik:</strong>
+                            ${depth} km<br><strong>Tarih:</strong> ${date}`
+                        );
+
+                        markers.set(key, marker);
+
+                        // Sadece en güncel deprem için animasyon, zoom, popup
+                        if (index === 0) {
+                            map.flyTo([lat, lng], 8, {
+                                animate: true,
+                                duration: 2
+                            });
+
+                            marker.openPopup();
+
+                            const pulse = L.divIcon({
+                                className: '',
+                                html: '<div class="pulse-marker"></div>',
+                                iconSize: [20, 20],
+                                iconAnchor: [10, 10]
+                            });
+
+                            L.marker([lat, lng], { icon: pulse }).addTo(map);
+                        }
+                    });
+                });
+        };
+        function CheckLastDataFromAPI() {
+            var reset = false;
+            fetch("https://api.orhanaydogdu.com.tr/deprem/kandilli/live?limit=1").then(res =>
+                res.json())
+                .then(data => {
+                    if (!data.result) return;
+
+                    data.result.forEach((eq, index) => {
+                        const key = eq._id;
+                        if (markers.has(key)) return; // zaten haritada varsa ekleme
+                        else reset = true;
+                    });
+
+                    if (reset) {
+                        if (playSound) {
+                            let audio = document.getElementById("myAudio");
+                            audio.play();
+                        }
+                        GetLastDataFromAPI();
+                    }
+                });
+        };
+
+    </script>
+
+    <script>
+        //Haritayi yukle
+        InitMap();
+        GetLastDataFromAPI();
+        setInterval(CheckLastDataFromAPI, 5000);
+    </script>
+
+</body>
+
+</html>
